@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Priorities — Eisenhower Matrix</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #F5F6F4;
+    --surface: #FFFFFF;
+    --ink: #14171A;
+    --muted: #6B7280;
+    --line: #E3E5E1;
+    --q1: #B4413A;
+    --q1-soft: #F7E9E7;
+    --q2: #2F5D62;
+    --q2-soft: #E7EEEC;
+    --q3: #B8862E;
+    --q3-soft: #F5EEE0;
+    --q4: #75777B;
+    --q4-soft: #EBECEA;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter', sans-serif;
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation:none !important; transition:none !important; }
+  }
+
+  .wrap{
+    max-width:1180px;
+    margin:0 auto;
+    padding:32px 24px 80px;
+  }
+
+  header{
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap:16px;
+    margin-bottom:28px;
+    flex-wrap:wrap;
+  }
+
+  h1{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size:clamp(28px, 4vw, 40px);
+    letter-spacing:-0.02em;
+    margin:0 0 4px;
+  }
+
+  .subtitle{
+    color:var(--muted);
+    font-size:14px;
+    margin:0;
+    max-width:46ch;
+  }
+
+  .stats{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+    color:var(--muted);
+    text-align:right;
+    line-height:1.6;
+  }
+  .stats b{ color:var(--ink); font-weight:500; }
+
+  /* ===== Matrix with real axes ===== */
+  .matrix-shell{
+    position:relative;
+    padding:44px 0 0 56px;
+  }
+
+  .axis-label-top{
+    position:absolute;
+    top:0; left:56px; right:0;
+    display:flex;
+    justify-content:space-between;
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+  .axis-label-top span::before{ content:"← "; }
+  .axis-label-top span:last-child::before{ content:""; }
+  .axis-label-top span:last-child::after{ content:" →"; }
+
+  .axis-label-side{
+    position:absolute;
+    left:0; top:44px; bottom:0;
+    width:40px;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    align-items:center;
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+  .axis-label-side span{
+    writing-mode:vertical-rl;
+    transform:rotate(180deg);
+    white-space:nowrap;
+  }
+
+  .grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:1fr 1fr;
+    gap:16px;
+    min-height:640px;
+  }
+
+  .quad{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:18px 18px 14px;
+    display:flex;
+    flex-direction:column;
+    min-height:280px;
+    position:relative;
+    transition:box-shadow .15s ease, border-color .15s ease;
+  }
+  .quad.dragover{
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-soft);
+  }
+
+  .quad-head{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    margin-bottom:12px;
+  }
+
+  .quad-title{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:600;
+    font-size:16px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .quad-title .dot{
+    width:8px; height:8px; border-radius:50%;
+    background:var(--accent);
+    flex-shrink:0;
+  }
+  .quad-tag{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+    color:var(--accent);
+    background:var(--accent-soft);
+    padding:2px 7px;
+    border-radius:20px;
+    letter-spacing:0.03em;
+  }
+
+  #q1{ --accent:var(--q1); --accent-soft:var(--q1-soft); }
+  #q2{ --accent:var(--q2); --accent-soft:var(--q2-soft); }
+  #q3{ --accent:var(--q3); --accent-soft:var(--q3-soft); }
+  #q4{ --accent:var(--q4); --accent-soft:var(--q4-soft); }
+
+  .quad-list{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    overflow-y:auto;
+    padding-bottom:4px;
+  }
+
+  .card{
+    background:var(--bg);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:10px 12px;
+    font-size:13.5px;
+    line-height:1.4;
+    cursor:grab;
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:8px;
+    animation:rise .25s ease both;
+  }
+  @keyframes rise{
+    from{ opacity:0; transform:translateY(4px); }
+    to{ opacity:1; transform:translateY(0); }
+  }
+  .card:active{ cursor:grabbing; }
+  .card.dragging{ opacity:.35; }
+
+  .card-text{ flex:1; word-break:break-word; }
+
+  .card-actions{
+    display:flex;
+    gap:4px;
+    flex-shrink:0;
+  }
+  .card-actions button{
+    border:none;
+    background:transparent;
+    color:var(--muted);
+    cursor:pointer;
+    font-size:14px;
+    padding:2px 4px;
+    border-radius:6px;
+    line-height:1;
+  }
+  .card-actions button:hover{ background:var(--line); color:var(--ink); }
+  .card-actions select{
+    font-family:'Inter', sans-serif;
+    font-size:11px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    background:var(--surface);
+    color:var(--muted);
+    padding:2px 3px;
+  }
+
+  .empty-hint{
+    color:var(--muted);
+    font-size:12.5px;
+    font-style:italic;
+    padding:6px 2px;
+  }
+
+  .add-row{
+    display:flex;
+    gap:6px;
+    margin-top:10px;
+  }
+  .add-row input{
+    flex:1;
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:8px 10px;
+    font-family:'Inter', sans-serif;
+    font-size:13px;
+    background:var(--bg);
+    color:var(--ink);
+  }
+  .add-row input:focus{
+    outline:none;
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-soft);
+  }
+  .add-row button{
+    border:none;
+    background:var(--accent);
+    color:#fff;
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:600;
+    font-size:13px;
+    padding:0 16px;
+    border-radius:8px;
+    cursor:pointer;
+  }
+  .add-row button:hover{ filter:brightness(1.08); }
+  .add-row button:focus-visible, .add-row input:focus-visible{
+    outline:2px solid var(--ink);
+    outline-offset:2px;
+  }
+
+  .quad-desc{
+    font-size:11.5px;
+    color:var(--muted);
+    margin:-6px 0 10px;
+  }
+
+  footer{
+    text-align:center;
+    color:var(--muted);
+    font-size:12px;
+    margin-top:36px;
+    font-family:'JetBrains Mono', monospace;
+  }
+
+  /* ===== Mobile ===== */
+  @media (max-width: 760px){
+    .wrap{ padding:20px 14px 60px; }
+    header{ flex-direction:column; align-items:flex-start; }
+    .stats{ text-align:left; }
+    .matrix-shell{ padding:0; }
+    .axis-label-top, .axis-label-side{ display:none; }
+    .grid{
+      grid-template-columns:1fr;
+      grid-template-rows:none;
+      min-height:0;
+    }
+    .quad{ min-height:0; }
+    .quad-list{ max-height:none; overflow:visible; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Priorities</h1>
+      <p class="subtitle">Plot what matters against what's loud. Drag cards between quadrants, or use the move menu on touch.</p>
+    </div>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <div class="matrix-shell">
+    <div class="axis-label-top">
+      <span>Not urgent</span>
+      <span>Urgent</span>
+    </div>
+    <div class="axis-label-side">
+      <span>Not important</span>
+      <span>Important</span>
+    </div>
+
+    <div class="grid">
+
+      <section class="quad" id="q1" data-quad="q1">
+        <div class="quad-head">
+          <span class="quad-title"><span class="dot"></span>Do now</span>
+          <span class="quad-tag">urgent · important</span>
+        </div>
+        <p class="quad-desc">Handle today. No delegating this.</p>
+        <div class="quad-list" id="list-q1"></div>
+        <form class="add-row" data-quad="q1">
+          <input type="text" placeholder="Add a task…" maxlength="140">
+          <button type="submit">Add</button>
+        </form>
+      </section>
+
+      <section class="quad" id="q2" data-quad="q2">
+        <div class="quad-head">
+          <span class="quad-title"><span class="dot"></span>Plan</span>
+          <span class="quad-tag">important · not urgent</span>
+        </div>
+        <p class="quad-desc">Schedule real time. This is where growth lives.</p>
+        <div class="quad-list" id="list-q2"></div>
+        <form class="add-row" data-quad="q2">
+          <input type="text" placeholder="Add a task…" maxlength="140">
+          <button type="submit">Add</button>
+        </form>
+      </section>
+
+      <section class="quad" id="q3" data-quad="q3">
+        <div class="quad-head">
+          <span class="quad-title"><span class="dot"></span>Delegate</span>
+          <span class="quad-tag">urgent · not important</span>
+        </div>
+        <p class="quad-desc">Loud, but not yours to carry. Hand it off.</p>
+        <div class="quad-list" id="list-q3"></div>
+        <form class="add-row" data-quad="q3">
+          <input type="text" placeholder="Add a task…" maxlength="140">
+          <button type="submit">Add</button>
+        </form>
+      </section>
+
+      <section class="quad" id="q4" data-quad="q4">
+        <div class="quad-head">
+          <span class="quad-title"><span class="dot"></span>Drop</span>
+          <span class="quad-tag">not urgent · not important</span>
+        </div>
+        <p class="quad-desc">Neither loud nor load-bearing. Let it go.</p>
+        <div class="quad-list" id="list-q4"></div>
+        <form class="add-row" data-quad="q4">
+          <input type="text" placeholder="Add a task…" maxlength="140">
+          <button type="submit">Add</button>
+        </form>
+      </section>
+
+    </div>
+  </div>
+
+  <footer>Data lives only in this browser tab · refresh resets to defaults</footer>
+</div>
+
+<script>
+  const QUAD_NAMES = {
+    q1: "Do now",
+    q2: "Plan",
+    q3: "Delegate",
+    q4: "Drop"
+  };
+
+  let state = {
+    q1: [
+      { id: cryptoId(), text: "Fix production outage on checkout API" },
+      { id: cryptoId(), text: "Reply to client escalation about missed deadline" },
+      { id: cryptoId(), text: "Submit tax filing — due tomorrow" }
+    ],
+    q2: [
+      { id: cryptoId(), text: "Draft Q3 product roadmap" },
+      { id: cryptoId(), text: "Learn the new design system" },
+      { id: cryptoId(), text: "Schedule quarterly 1:1s with the team" },
+      { id: cryptoId(), text: "Research competitor pricing models" }
+    ],
+    q3: [
+      { id: cryptoId(), text: "Book the office holiday party venue" },
+      { id: cryptoId(), text: "Approve routine expense reports" },
+      { id: cryptoId(), text: "Answer non-urgent Slack threads" }
+    ],
+    q4: [
+      { id: cryptoId(), text: "Reorganize old email folders" },
+      { id: cryptoId(), text: "Browse industry newsletter archive" }
+    ]
+  };
+
+  function cryptoId(){
+    return Math.random().toString(36).slice(2, 10);
+  }
+
+  function render(){
+    Object.keys(state).forEach(q => {
+      const list = document.getElementById('list-' + q);
+      list.innerHTML = '';
+      if(state[q].length === 0){
+        const hint = document.createElement('div');
+        hint.className = 'empty-hint';
+        hint.textContent = 'Nothing here — drag a card in, or add one below.';
+        list.appendChild(hint);
+      }
+      state[q].forEach(task => {
+        list.appendChild(buildCard(task, q));
+      });
+    });
+    updateStats();
+  }
+
+  function buildCard(task, quad){
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.draggable = true;
+    card.dataset.id = task.id;
+    card.dataset.quad = quad;
+
+    card.addEventListener('dragstart', e => {
+      card.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', JSON.stringify({ id: task.id, from: quad }));
+    });
+    card.addEventListener('dragend', () => card.classList.remove('dragging'));
+
+    const textEl = document.createElement('span');
+    textEl.className = 'card-text';
+    textEl.textContent = task.text;
+
+    const actions = document.createElement('div');
+    actions.className = 'card-actions';
+
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', 'Move task to another quadrant');
+    Object.keys(QUAD_NAMES).forEach(q => {
+      const opt = document.createElement('option');
+      opt.value = q;
+      opt.textContent = q === quad ? '— ' + QUAD_NAMES[q] : '→ ' + QUAD_NAMES[q];
+      if(q === quad) opt.selected = true;
+      select.appendChild(opt);
+    });
+    select.addEventListener('change', () => {
+      moveTask(task.id, quad, select.value);
+    });
+
+    const delBtn = document.createElement('button');
+    delBtn.innerHTML = '&times;';
+    delBtn.setAttribute('aria-label', 'Delete task');
+    delBtn.addEventListener('click', () => {
+      state[quad] = state[quad].filter(t => t.id !== task.id);
+      render();
+    });
+
+    actions.appendChild(select);
+    actions.appendChild(delBtn);
+    card.appendChild(textEl);
+    card.appendChild(actions);
+    return card;
+  }
+
+  function moveTask(id, from, to){
+    if(from === to) return;
+    const idx = state[from].findIndex(t => t.id === id);
+    if(idx === -1) return;
+    const [task] = state[from].splice(idx, 1);
+    state[to].push(task);
+    render();
+  }
+
+  function updateStats(){
+    const total = Object.values(state).reduce((sum, arr) => sum + arr.length, 0);
+    document.getElementById('stats').innerHTML =
+      `<b>${total}</b> total &nbsp;·&nbsp; <b>${state.q1.length}</b> urgent &amp; important`;
+  }
+
+  // Drag & drop targets
+  document.querySelectorAll('.quad').forEach(quad => {
+    quad.addEventListener('dragover', e => {
+      e.preventDefault();
+      quad.classList.add('dragover');
+    });
+    quad.addEventListener('dragleave', () => quad.classList.remove('dragover'));
+    quad.addEventListener('drop', e => {
+      e.preventDefault();
+      quad.classList.remove('dragover');
+      const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+      moveTask(data.id, data.from, quad.dataset.quad);
+    });
+  });
+
+  // Add-task forms
+  document.querySelectorAll('.add-row').forEach(form => {
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const input = form.querySelector('input');
+      const val = input.value.trim();
+      if(!val) return;
+      state[form.dataset.quad].push({ id: cryptoId(), text: val });
+      input.value = '';
+      render();
+    });
+  });
+
+  render();
+</script>
+
+</body>
+</html>
