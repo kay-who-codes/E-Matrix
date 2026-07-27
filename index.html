@@ -333,6 +333,64 @@
     font-family:'JetBrains Mono', monospace;
   }
 
+  /* ===== Todoist panel ===== */
+  .todoist-panel{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:14px 16px;
+    margin-bottom:22px;
+  }
+  .todoist-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .todoist-label{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:600;
+    font-size:13px;
+    color:var(--ink);
+    flex-shrink:0;
+  }
+  .todoist-row input{
+    flex:1;
+    min-width:160px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:7px 10px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:12.5px;
+    background:var(--bg);
+    color:var(--ink);
+  }
+  .todoist-row input:focus{
+    outline:none;
+    border-color:var(--ink);
+  }
+  .todoist-row button{
+    border:none;
+    background:var(--ink);
+    color:#fff;
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:600;
+    font-size:13px;
+    padding:7px 16px;
+    border-radius:8px;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .todoist-row button:hover{ filter:brightness(1.15); }
+  .todoist-row button:disabled{ opacity:.5; cursor:wait; }
+  .todoist-status{
+    font-size:11.5px;
+    color:var(--muted);
+    margin:8px 0 0;
+  }
+  .todoist-status.error{ color:var(--q1); }
+  .todoist-status.ok{ color:var(--q2); }
+
   /* ===== Chart view ===== */
   .chart-panel{
     background:var(--surface);
@@ -450,6 +508,15 @@
     <button type="button" data-view="chart" role="tab" aria-selected="false">Chart</button>
   </div>
 
+  <div class="todoist-panel" id="todoist-panel">
+    <div class="todoist-row">
+      <span class="todoist-label">Todoist</span>
+      <input type="password" id="todoist-token" placeholder="Paste your API token…" autocomplete="off">
+      <button type="button" id="todoist-sync">Sync</button>
+    </div>
+    <p class="todoist-status" id="todoist-status">Not connected. Token stays in this browser tab only — never sent anywhere but Todoist.</p>
+  </div>
+
   <!-- BOARD VIEW -->
   <div class="view active" id="view-board">
     <div class="matrix-shell">
@@ -564,7 +631,7 @@
 
   function seedTask(text, quad){
     const d = QUAD_DEFAULTS[quad];
-    return { id: cryptoId(), text, urgency: jitter(d.urgency), importance: jitter(d.importance) };
+    return { id: cryptoId(), text, urgency: jitter(d.urgency), importance: jitter(d.importance), source: 'local' };
   }
 
   let state = {
@@ -637,7 +704,7 @@
     textEl.textContent = task.text;
     const meta = document.createElement('span');
     meta.className = 'card-meta';
-    meta.textContent = `U ${task.urgency.toFixed(1)} · I ${task.importance.toFixed(1)}`;
+    meta.textContent = `U ${task.urgency.toFixed(1)} · I ${task.importance.toFixed(1)}` + (task.source === 'todoist' ? ' · Todoist' : '');
     textWrap.appendChild(textEl);
     textWrap.appendChild(meta);
 
@@ -729,6 +796,85 @@
       render();
     });
   });
+
+  // ===== Todoist sync =====
+  // Priority in Todoist's API: 4 = highest (shown as p1 in the app), 1 = normal (p4 in the app).
+  // We map that directly to an importance score.
+  const TODOIST_PRIORITY_TO_IMPORTANCE = { 4: 9.5, 3: 7, 2: 4.5, 1: 2 };
+
+  function urgencyFromDueDate(dueString){
+    if(!dueString) return 1.5; // no due date = not urgent
+    const due = new Date(dueString);
+    if(isNaN(due)) return 1.5;
+    const now = new Date();
+    const msPerDay = 86400000;
+    const daysUntil = (due.setHours(23,59,59,999) - now) / msPerDay;
+    if(daysUntil < 0) return 10;       // overdue
+    if(daysUntil < 1) return 9.5;      // due today
+    if(daysUntil < 2) return 8;        // due tomorrow
+    if(daysUntil < 4) return 6;        // due this week
+    if(daysUntil < 8) return 4;        // due next week
+    return 1.5;                        // due later / far out
+  }
+
+  async function syncTodoist(){
+    const tokenInput = document.getElementById('todoist-token');
+    const status = document.getElementById('todoist-status');
+    const btn = document.getElementById('todoist-sync');
+    const token = tokenInput.value.trim();
+
+    if(!token){
+      status.textContent = 'Paste your Todoist API token first (Todoist → Settings → Integrations → Developer).';
+      status.className = 'todoist-status error';
+      return;
+    }
+
+    btn.disabled = true;
+    status.textContent = 'Syncing…';
+    status.className = 'todoist-status';
+
+    try{
+      const res = await fetch('https://api.todoist.com/rest/v2/tasks', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if(!res.ok){
+        throw new Error(res.status === 401 || res.status === 403
+          ? 'Todoist rejected that token — double check it and try again.'
+          : `Todoist returned an error (${res.status}).`);
+      }
+      const tasks = await res.json();
+
+      // Remove previously-synced Todoist tasks so this is a clean re-sync, not a duplicate append.
+      Object.keys(state).forEach(q => {
+        state[q] = state[q].filter(t => t.source !== 'todoist');
+      });
+
+      tasks.forEach(t => {
+        const importance = TODOIST_PRIORITY_TO_IMPORTANCE[t.priority] ?? 2;
+        const urgency = urgencyFromDueDate(t.due ? t.due.date : null);
+        const quad = quadFromValues(urgency, importance);
+        state[quad].push({
+          id: 'td-' + t.id,
+          text: t.content,
+          urgency, importance,
+          source: 'todoist'
+        });
+      });
+
+      render();
+      status.textContent = `Synced ${tasks.length} task${tasks.length === 1 ? '' : 's'} from Todoist just now.`;
+      status.className = 'todoist-status ok';
+    }catch(err){
+      status.textContent = err.message.includes('Failed to fetch')
+        ? 'Could not reach Todoist — this may be a network/CORS restriction in this environment.'
+        : err.message;
+      status.className = 'todoist-status error';
+    }finally{
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById('todoist-sync').addEventListener('click', syncTodoist);
 
   // ===== View switcher =====
   document.querySelectorAll('.view-switch button').forEach(btn => {
