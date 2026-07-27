@@ -834,7 +834,7 @@
     status.className = 'todoist-status';
 
     try{
-      const res = await fetch('https://api.todoist.com/rest/v2/tasks', {
+      const res = await fetch('https://api.todoist.com/api/v1/tasks', {
         headers: { 'Authorization': 'Bearer ' + token }
       });
       if(!res.ok){
@@ -842,7 +842,9 @@
           ? 'Todoist rejected that token — double check it and try again.'
           : `Todoist returned an error (${res.status}).`);
       }
-      const tasks = await res.json();
+      const payload = await res.json();
+      // v1 wraps results in an object: { results: [...], next_cursor: ... }
+      const tasks = Array.isArray(payload) ? payload : (payload.results || []);
 
       // Remove previously-synced Todoist tasks so this is a clean re-sync, not a duplicate append.
       Object.keys(state).forEach(q => {
