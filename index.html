@@ -49,7 +49,7 @@
     align-items:flex-end;
     justify-content:space-between;
     gap:16px;
-    margin-bottom:28px;
+    margin-bottom:20px;
     flex-wrap:wrap;
   }
 
@@ -76,6 +76,39 @@
     line-height:1.6;
   }
   .stats b{ color:var(--ink); font-weight:500; }
+
+  /* ===== View switcher ===== */
+  .view-switch{
+    display:inline-flex;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:3px;
+    margin-bottom:22px;
+    gap:2px;
+  }
+  .view-switch button{
+    border:none;
+    background:transparent;
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:600;
+    font-size:13px;
+    color:var(--muted);
+    padding:7px 16px;
+    border-radius:7px;
+    cursor:pointer;
+  }
+  .view-switch button.active{
+    background:var(--ink);
+    color:#fff;
+  }
+  .view-switch button:focus-visible{
+    outline:2px solid var(--ink);
+    outline-offset:2px;
+  }
+
+  .view{ display:none; }
+  .view.active{ display:block; }
 
   /* ===== Matrix with real axes ===== */
   .matrix-shell{
@@ -208,6 +241,13 @@
   .card.dragging{ opacity:.35; }
 
   .card-text{ flex:1; word-break:break-word; }
+  .card-meta{
+    display:block;
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+    color:var(--muted);
+    margin-top:3px;
+  }
 
   .card-actions{
     display:flex;
@@ -293,6 +333,89 @@
     font-family:'JetBrains Mono', monospace;
   }
 
+  /* ===== Chart view ===== */
+  .chart-panel{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:20px 20px 12px;
+  }
+  .chart-hint{
+    font-size:12.5px;
+    color:var(--muted);
+    margin:0 0 14px;
+  }
+  .chart-wrap{
+    position:relative;
+    width:100%;
+    max-width:640px;
+    margin:0 auto;
+    touch-action:none;
+  }
+  .chart-wrap svg{
+    width:100%;
+    height:auto;
+    display:block;
+    overflow:visible;
+  }
+  .chart-node{
+    cursor:grab;
+  }
+  .chart-node:active{ cursor:grabbing; }
+  .chart-node circle{
+    stroke:#fff;
+    stroke-width:2;
+    filter:drop-shadow(0 1px 2px rgba(0,0,0,0.15));
+  }
+  .chart-node.dragging circle{
+    stroke-width:3;
+  }
+  .chart-label{
+    font-family:'Inter', sans-serif;
+    font-size:11px;
+    color:var(--ink);
+    background:rgba(255,255,255,0.92);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:2px 6px;
+    white-space:nowrap;
+    max-width:150px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    pointer-events:none;
+    line-height:1.4;
+  }
+  .axis-tick{
+    font-family:'JetBrains Mono', monospace;
+    font-size:9.5px;
+    fill:var(--muted);
+  }
+  .axis-title{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:600;
+    font-size:12px;
+    fill:var(--ink);
+  }
+  .chart-legend{
+    display:flex;
+    flex-wrap:wrap;
+    gap:14px;
+    justify-content:center;
+    margin-top:18px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    color:var(--muted);
+  }
+  .chart-legend span{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+  }
+  .chart-legend i{
+    width:8px; height:8px; border-radius:50%;
+    display:inline-block;
+  }
+
   /* ===== Mobile ===== */
   @media (max-width: 760px){
     .wrap{ padding:20px 14px 60px; }
@@ -307,6 +430,7 @@
     }
     .quad{ min-height:0; }
     .quad-list{ max-height:none; overflow:visible; }
+    .chart-label{ font-size:10px; max-width:110px; }
   }
 </style>
 </head>
@@ -316,75 +440,99 @@
   <header>
     <div>
       <h1>Priorities</h1>
-      <p class="subtitle">Plot what matters against what's loud. Drag cards between quadrants, or use the move menu on touch.</p>
+      <p class="subtitle">Plot what matters against what's loud. Drag cards between quadrants, or plot them precisely on the chart.</p>
     </div>
     <div class="stats" id="stats"></div>
   </header>
 
-  <div class="matrix-shell">
-    <div class="axis-label-top">
-      <span>Not urgent</span>
-      <span>Urgent</span>
+  <div class="view-switch" role="tablist">
+    <button type="button" data-view="board" class="active" role="tab" aria-selected="true">Board</button>
+    <button type="button" data-view="chart" role="tab" aria-selected="false">Chart</button>
+  </div>
+
+  <!-- BOARD VIEW -->
+  <div class="view active" id="view-board">
+    <div class="matrix-shell">
+      <div class="axis-label-top">
+        <span>Not urgent</span>
+        <span>Urgent</span>
+      </div>
+      <div class="axis-label-side">
+        <span>Not important</span>
+        <span>Important</span>
+      </div>
+
+      <div class="grid">
+
+        <section class="quad" id="q1" data-quad="q1">
+          <div class="quad-head">
+            <span class="quad-title"><span class="dot"></span>Do now</span>
+            <span class="quad-tag">urgent · important</span>
+          </div>
+          <p class="quad-desc">Handle today. No delegating this.</p>
+          <div class="quad-list" id="list-q1"></div>
+          <form class="add-row" data-quad="q1">
+            <input type="text" placeholder="Add a task…" maxlength="140">
+            <button type="submit">Add</button>
+          </form>
+        </section>
+
+        <section class="quad" id="q2" data-quad="q2">
+          <div class="quad-head">
+            <span class="quad-title"><span class="dot"></span>Plan</span>
+            <span class="quad-tag">important · not urgent</span>
+          </div>
+          <p class="quad-desc">Schedule real time. This is where growth lives.</p>
+          <div class="quad-list" id="list-q2"></div>
+          <form class="add-row" data-quad="q2">
+            <input type="text" placeholder="Add a task…" maxlength="140">
+            <button type="submit">Add</button>
+          </form>
+        </section>
+
+        <section class="quad" id="q3" data-quad="q3">
+          <div class="quad-head">
+            <span class="quad-title"><span class="dot"></span>Delegate</span>
+            <span class="quad-tag">urgent · not important</span>
+          </div>
+          <p class="quad-desc">Loud, but not yours to carry. Hand it off.</p>
+          <div class="quad-list" id="list-q3"></div>
+          <form class="add-row" data-quad="q3">
+            <input type="text" placeholder="Add a task…" maxlength="140">
+            <button type="submit">Add</button>
+          </form>
+        </section>
+
+        <section class="quad" id="q4" data-quad="q4">
+          <div class="quad-head">
+            <span class="quad-title"><span class="dot"></span>Drop</span>
+            <span class="quad-tag">not urgent · not important</span>
+          </div>
+          <p class="quad-desc">Neither loud nor load-bearing. Let it go.</p>
+          <div class="quad-list" id="list-q4"></div>
+          <form class="add-row" data-quad="q4">
+            <input type="text" placeholder="Add a task…" maxlength="140">
+            <button type="submit">Add</button>
+          </form>
+        </section>
+
+      </div>
     </div>
-    <div class="axis-label-side">
-      <span>Not important</span>
-      <span>Important</span>
-    </div>
+  </div>
 
-    <div class="grid">
-
-      <section class="quad" id="q1" data-quad="q1">
-        <div class="quad-head">
-          <span class="quad-title"><span class="dot"></span>Do now</span>
-          <span class="quad-tag">urgent · important</span>
-        </div>
-        <p class="quad-desc">Handle today. No delegating this.</p>
-        <div class="quad-list" id="list-q1"></div>
-        <form class="add-row" data-quad="q1">
-          <input type="text" placeholder="Add a task…" maxlength="140">
-          <button type="submit">Add</button>
-        </form>
-      </section>
-
-      <section class="quad" id="q2" data-quad="q2">
-        <div class="quad-head">
-          <span class="quad-title"><span class="dot"></span>Plan</span>
-          <span class="quad-tag">important · not urgent</span>
-        </div>
-        <p class="quad-desc">Schedule real time. This is where growth lives.</p>
-        <div class="quad-list" id="list-q2"></div>
-        <form class="add-row" data-quad="q2">
-          <input type="text" placeholder="Add a task…" maxlength="140">
-          <button type="submit">Add</button>
-        </form>
-      </section>
-
-      <section class="quad" id="q3" data-quad="q3">
-        <div class="quad-head">
-          <span class="quad-title"><span class="dot"></span>Delegate</span>
-          <span class="quad-tag">urgent · not important</span>
-        </div>
-        <p class="quad-desc">Loud, but not yours to carry. Hand it off.</p>
-        <div class="quad-list" id="list-q3"></div>
-        <form class="add-row" data-quad="q3">
-          <input type="text" placeholder="Add a task…" maxlength="140">
-          <button type="submit">Add</button>
-        </form>
-      </section>
-
-      <section class="quad" id="q4" data-quad="q4">
-        <div class="quad-head">
-          <span class="quad-title"><span class="dot"></span>Drop</span>
-          <span class="quad-tag">not urgent · not important</span>
-        </div>
-        <p class="quad-desc">Neither loud nor load-bearing. Let it go.</p>
-        <div class="quad-list" id="list-q4"></div>
-        <form class="add-row" data-quad="q4">
-          <input type="text" placeholder="Add a task…" maxlength="140">
-          <button type="submit">Add</button>
-        </form>
-      </section>
-
+  <!-- CHART VIEW -->
+  <div class="view" id="view-chart">
+    <div class="chart-panel">
+      <p class="chart-hint">Drag any point to set its exact urgency and importance (0–10). Moving it changes which quadrant it belongs to.</p>
+      <div class="chart-wrap">
+        <svg id="chart-svg" viewBox="0 0 560 560"></svg>
+      </div>
+      <div class="chart-legend">
+        <span><i style="background:var(--q1)"></i>Do now</span>
+        <span><i style="background:var(--q2)"></i>Plan</span>
+        <span><i style="background:var(--q3)"></i>Delegate</span>
+        <span><i style="background:var(--q4)"></i>Drop</span>
+      </div>
     </div>
   </div>
 
@@ -392,41 +540,71 @@
 </div>
 
 <script>
-  const QUAD_NAMES = {
-    q1: "Do now",
-    q2: "Plan",
-    q3: "Delegate",
-    q4: "Drop"
+  const QUAD_NAMES = { q1: "Do now", q2: "Plan", q3: "Delegate", q4: "Drop" };
+  const QUAD_COLORS = { q1: "#B4413A", q2: "#2F5D62", q3: "#B8862E", q4: "#75777B" };
+  const QUAD_SOFT   = { q1: "#F7E9E7", q2: "#E7EEEC", q3: "#F5EEE0", q4: "#EBECEA" };
+
+  // Default urgency/importance anchors per quadrant (with slight jitter on creation)
+  const QUAD_DEFAULTS = {
+    q1: { urgency: 8, importance: 8 },
+    q2: { urgency: 3, importance: 8 },
+    q3: { urgency: 8, importance: 3 },
+    q4: { urgency: 3, importance: 3 }
   };
+
+  function cryptoId(){ return Math.random().toString(36).slice(2, 10); }
+  function jitter(v){ return Math.max(0, Math.min(10, +(v + (Math.random()*1.6 - 0.8)).toFixed(1))); }
+  function clamp(v){ return Math.max(0, Math.min(10, v)); }
+  function quadFromValues(u, i){
+    if(u >= 5 && i >= 5) return 'q1';
+    if(u < 5 && i >= 5) return 'q2';
+    if(u >= 5 && i < 5) return 'q3';
+    return 'q4';
+  }
+
+  function seedTask(text, quad){
+    const d = QUAD_DEFAULTS[quad];
+    return { id: cryptoId(), text, urgency: jitter(d.urgency), importance: jitter(d.importance) };
+  }
 
   let state = {
     q1: [
-      { id: cryptoId(), text: "Fix production outage on checkout API" },
-      { id: cryptoId(), text: "Reply to client escalation about missed deadline" },
-      { id: cryptoId(), text: "Submit tax filing — due tomorrow" }
+      seedTask("Fix production outage on checkout API", 'q1'),
+      seedTask("Reply to client escalation about missed deadline", 'q1'),
+      seedTask("Submit tax filing — due tomorrow", 'q1')
     ],
     q2: [
-      { id: cryptoId(), text: "Draft Q3 product roadmap" },
-      { id: cryptoId(), text: "Learn the new design system" },
-      { id: cryptoId(), text: "Schedule quarterly 1:1s with the team" },
-      { id: cryptoId(), text: "Research competitor pricing models" }
+      seedTask("Draft Q3 product roadmap", 'q2'),
+      seedTask("Learn the new design system", 'q2'),
+      seedTask("Schedule quarterly 1:1s with the team", 'q2'),
+      seedTask("Research competitor pricing models", 'q2')
     ],
     q3: [
-      { id: cryptoId(), text: "Book the office holiday party venue" },
-      { id: cryptoId(), text: "Approve routine expense reports" },
-      { id: cryptoId(), text: "Answer non-urgent Slack threads" }
+      seedTask("Book the office holiday party venue", 'q3'),
+      seedTask("Approve routine expense reports", 'q3'),
+      seedTask("Answer non-urgent Slack threads", 'q3')
     ],
     q4: [
-      { id: cryptoId(), text: "Reorganize old email folders" },
-      { id: cryptoId(), text: "Browse industry newsletter archive" }
+      seedTask("Reorganize old email folders", 'q4'),
+      seedTask("Browse industry newsletter archive", 'q4')
     ]
   };
 
-  function cryptoId(){
-    return Math.random().toString(36).slice(2, 10);
+  function findTask(id){
+    for(const q of Object.keys(state)){
+      const t = state[q].find(t => t.id === id);
+      if(t) return { task: t, quad: q };
+    }
+    return null;
   }
 
   function render(){
+    renderBoard();
+    renderChart();
+    updateStats();
+  }
+
+  function renderBoard(){
     Object.keys(state).forEach(q => {
       const list = document.getElementById('list-' + q);
       list.innerHTML = '';
@@ -436,11 +614,8 @@
         hint.textContent = 'Nothing here — drag a card in, or add one below.';
         list.appendChild(hint);
       }
-      state[q].forEach(task => {
-        list.appendChild(buildCard(task, q));
-      });
+      state[q].forEach(task => list.appendChild(buildCard(task, q)));
     });
-    updateStats();
   }
 
   function buildCard(task, quad){
@@ -456,9 +631,15 @@
     });
     card.addEventListener('dragend', () => card.classList.remove('dragging'));
 
+    const textWrap = document.createElement('span');
+    textWrap.className = 'card-text';
     const textEl = document.createElement('span');
-    textEl.className = 'card-text';
     textEl.textContent = task.text;
+    const meta = document.createElement('span');
+    meta.className = 'card-meta';
+    meta.textContent = `U ${task.urgency.toFixed(1)} · I ${task.importance.toFixed(1)}`;
+    textWrap.appendChild(textEl);
+    textWrap.appendChild(meta);
 
     const actions = document.createElement('div');
     actions.className = 'card-actions';
@@ -472,9 +653,7 @@
       if(q === quad) opt.selected = true;
       select.appendChild(opt);
     });
-    select.addEventListener('change', () => {
-      moveTask(task.id, quad, select.value);
-    });
+    select.addEventListener('change', () => moveToQuad(task.id, select.value));
 
     const delBtn = document.createElement('button');
     delBtn.innerHTML = '&times;';
@@ -486,17 +665,37 @@
 
     actions.appendChild(select);
     actions.appendChild(delBtn);
-    card.appendChild(textEl);
+    card.appendChild(textWrap);
     card.appendChild(actions);
     return card;
   }
 
-  function moveTask(id, from, to){
-    if(from === to) return;
-    const idx = state[from].findIndex(t => t.id === id);
-    if(idx === -1) return;
-    const [task] = state[from].splice(idx, 1);
+  // Manual move (drag on board, or select dropdown): reassign to quad's anchor point
+  function moveToQuad(id, to){
+    const found = findTask(id);
+    if(!found || found.quad === to) return;
+    const { task, quad: from } = found;
+    state[from] = state[from].filter(t => t.id !== id);
+    const d = QUAD_DEFAULTS[to];
+    task.urgency = jitter(d.urgency);
+    task.importance = jitter(d.importance);
     state[to].push(task);
+    render();
+  }
+
+  // Chart-driven move: reassign quad membership based on raw values, no jitter
+  function updateFromChart(id, urgency, importance){
+    const found = findTask(id);
+    if(!found) return;
+    const { task } = found;
+    task.urgency = urgency;
+    task.importance = importance;
+    const targetQuad = quadFromValues(urgency, importance);
+    const currentQuad = findTask(id).quad;
+    if(targetQuad !== currentQuad){
+      state[currentQuad] = state[currentQuad].filter(t => t.id !== id);
+      state[targetQuad].push(task);
+    }
     render();
   }
 
@@ -506,33 +705,220 @@
       `<b>${total}</b> total &nbsp;·&nbsp; <b>${state.q1.length}</b> urgent &amp; important`;
   }
 
-  // Drag & drop targets
+  // ===== Board drag & drop targets =====
   document.querySelectorAll('.quad').forEach(quad => {
-    quad.addEventListener('dragover', e => {
-      e.preventDefault();
-      quad.classList.add('dragover');
-    });
+    quad.addEventListener('dragover', e => { e.preventDefault(); quad.classList.add('dragover'); });
     quad.addEventListener('dragleave', () => quad.classList.remove('dragover'));
     quad.addEventListener('drop', e => {
       e.preventDefault();
       quad.classList.remove('dragover');
       const data = JSON.parse(e.dataTransfer.getData('text/plain'));
-      moveTask(data.id, data.from, quad.dataset.quad);
+      moveToQuad(data.id, quad.dataset.quad);
     });
   });
 
-  // Add-task forms
+  // ===== Add-task forms =====
   document.querySelectorAll('.add-row').forEach(form => {
     form.addEventListener('submit', e => {
       e.preventDefault();
       const input = form.querySelector('input');
       const val = input.value.trim();
       if(!val) return;
-      state[form.dataset.quad].push({ id: cryptoId(), text: val });
+      state[form.dataset.quad].push(seedTask(val, form.dataset.quad));
       input.value = '';
       render();
     });
   });
+
+  // ===== View switcher =====
+  document.querySelectorAll('.view-switch button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.view-switch button').forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
+      });
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.getElementById('view-' + btn.dataset.view).classList.add('active');
+      if(btn.dataset.view === 'chart') renderChart();
+    });
+  });
+
+  // ===== Chart =====
+  const CHART_SIZE = 560;
+  const CHART_MARGIN = 50;
+  const PLOT = CHART_SIZE - CHART_MARGIN * 1.4;
+
+  function valueToPixel(urgency, importance){
+    const x = CHART_MARGIN + (urgency / 10) * PLOT;
+    const y = CHART_MARGIN + (1 - importance / 10) * PLOT;
+    return { x, y };
+  }
+  function pixelToValue(px, py){
+    const u = clamp(((px - CHART_MARGIN) / PLOT) * 10);
+    const i = clamp((1 - (py - CHART_MARGIN) / PLOT) * 10);
+    return { u: +u.toFixed(1), i: +i.toFixed(1) };
+  }
+
+  function renderChart(){
+    const svg = document.getElementById('chart-svg');
+    svg.innerHTML = '';
+    svg.setAttribute('viewBox', `0 0 ${CHART_SIZE} ${CHART_SIZE}`);
+
+    const ns = 'http://www.w3.org/2000/svg';
+    const half = PLOT / 2;
+    const mid = CHART_MARGIN + half;
+
+    // Quadrant background tints
+    const quads = [
+      { x: CHART_MARGIN, y: CHART_MARGIN, fill: QUAD_SOFT.q2 },              // top-left: not urgent, important
+      { x: mid, y: CHART_MARGIN, fill: QUAD_SOFT.q1 },                        // top-right: urgent, important
+      { x: CHART_MARGIN, y: mid, fill: QUAD_SOFT.q4 },                        // bottom-left: not urgent, not important
+      { x: mid, y: mid, fill: QUAD_SOFT.q3 }                                  // bottom-right: urgent, not important
+    ];
+    quads.forEach(q => {
+      const r = document.createElementNS(ns, 'rect');
+      r.setAttribute('x', q.x); r.setAttribute('y', q.y);
+      r.setAttribute('width', half); r.setAttribute('height', half);
+      r.setAttribute('fill', q.fill);
+      svg.appendChild(r);
+    });
+
+    // Gridlines every 2 units
+    for(let v = 0; v <= 10; v += 2){
+      const gx = CHART_MARGIN + (v/10)*PLOT;
+      const gy = CHART_MARGIN + (1 - v/10)*PLOT;
+      const vline = document.createElementNS(ns, 'line');
+      vline.setAttribute('x1', gx); vline.setAttribute('x2', gx);
+      vline.setAttribute('y1', CHART_MARGIN); vline.setAttribute('y2', CHART_MARGIN + PLOT);
+      vline.setAttribute('stroke', v === 5 ? '#B8B9B4' : '#E3E5E1');
+      vline.setAttribute('stroke-width', v === 5 ? 1.4 : 1);
+      svg.appendChild(vline);
+
+      const hline = document.createElementNS(ns, 'line');
+      hline.setAttribute('x1', CHART_MARGIN); hline.setAttribute('x2', CHART_MARGIN + PLOT);
+      hline.setAttribute('y1', gy); hline.setAttribute('y2', gy);
+      hline.setAttribute('stroke', v === 5 ? '#B8B9B4' : '#E3E5E1');
+      hline.setAttribute('stroke-width', v === 5 ? 1.4 : 1);
+      svg.appendChild(hline);
+
+      const tick = document.createElementNS(ns, 'text');
+      tick.setAttribute('x', gx);
+      tick.setAttribute('y', CHART_MARGIN + PLOT + 16);
+      tick.setAttribute('text-anchor', 'middle');
+      tick.setAttribute('class', 'axis-tick');
+      tick.textContent = v;
+      svg.appendChild(tick);
+
+      const tickY = document.createElementNS(ns, 'text');
+      tickY.setAttribute('x', CHART_MARGIN - 10);
+      tickY.setAttribute('y', gy + 3);
+      tickY.setAttribute('text-anchor', 'end');
+      tickY.setAttribute('class', 'axis-tick');
+      tickY.textContent = v;
+      svg.appendChild(tickY);
+    }
+
+    // Border
+    const border = document.createElementNS(ns, 'rect');
+    border.setAttribute('x', CHART_MARGIN); border.setAttribute('y', CHART_MARGIN);
+    border.setAttribute('width', PLOT); border.setAttribute('height', PLOT);
+    border.setAttribute('fill', 'none');
+    border.setAttribute('stroke', '#C7C9C4');
+    border.setAttribute('stroke-width', 1.4);
+    svg.appendChild(border);
+
+    // Axis titles
+    const xTitle = document.createElementNS(ns, 'text');
+    xTitle.setAttribute('x', CHART_MARGIN + PLOT/2);
+    xTitle.setAttribute('y', CHART_SIZE - 4);
+    xTitle.setAttribute('text-anchor', 'middle');
+    xTitle.setAttribute('class', 'axis-title');
+    xTitle.textContent = 'Urgency →';
+    svg.appendChild(xTitle);
+
+    const yTitle = document.createElementNS(ns, 'text');
+    yTitle.setAttribute('x', 0);
+    yTitle.setAttribute('y', 0);
+    yTitle.setAttribute('text-anchor', 'middle');
+    yTitle.setAttribute('class', 'axis-title');
+    yTitle.textContent = 'Importance →';
+    yTitle.setAttribute('transform', `translate(16, ${CHART_MARGIN + PLOT/2}) rotate(-90)`);
+    svg.appendChild(yTitle);
+
+    // Task nodes
+    const allTasks = [];
+    Object.keys(state).forEach(q => state[q].forEach(t => allTasks.push({ ...t, quad: q })));
+
+    allTasks.forEach(task => {
+      const { x, y } = valueToPixel(task.urgency, task.importance);
+      const quad = quadFromValues(task.urgency, task.importance);
+
+      const g = document.createElementNS(ns, 'g');
+      g.setAttribute('class', 'chart-node');
+      g.dataset.id = task.id;
+
+      const circle = document.createElementNS(ns, 'circle');
+      circle.setAttribute('cx', x);
+      circle.setAttribute('cy', y);
+      circle.setAttribute('r', 7);
+      circle.setAttribute('fill', QUAD_COLORS[quad]);
+      g.appendChild(circle);
+
+      const fo = document.createElementNS(ns, 'foreignObject');
+      fo.setAttribute('x', x + 10);
+      fo.setAttribute('y', y - 10);
+      fo.setAttribute('width', 150);
+      fo.setAttribute('height', 22);
+      const label = document.createElement('div');
+      label.className = 'chart-label';
+      label.textContent = task.text;
+      fo.appendChild(label);
+      g.appendChild(fo);
+
+      svg.appendChild(g);
+      attachDrag(g, svg, task.id);
+    });
+  }
+
+  function attachDrag(node, svg, id){
+    node.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      node.classList.add('dragging');
+      node.setPointerCapture(e.pointerId);
+
+      const move = ev => {
+        const rect = svg.getBoundingClientRect();
+        const scaleX = CHART_SIZE / rect.width;
+        const scaleY = CHART_SIZE / rect.height;
+        const px = (ev.clientX - rect.left) * scaleX;
+        const py = (ev.clientY - rect.top) * scaleY;
+        const { u, i } = pixelToValue(px, py);
+        const circle = node.querySelector('circle');
+        const { x, y } = valueToPixel(u, i);
+        circle.setAttribute('cx', x);
+        circle.setAttribute('cy', y);
+        const fo = node.querySelector('foreignObject');
+        fo.setAttribute('x', x + 10);
+        fo.setAttribute('y', y - 10);
+        node._pendingU = u;
+        node._pendingI = i;
+      };
+
+      const up = () => {
+        node.classList.remove('dragging');
+        node.removeEventListener('pointermove', move);
+        node.removeEventListener('pointerup', up);
+        if(node._pendingU !== undefined){
+          updateFromChart(id, node._pendingU, node._pendingI);
+        }
+      };
+
+      node.addEventListener('pointermove', move);
+      node.addEventListener('pointerup', up);
+    });
+  }
 
   render();
 </script>
