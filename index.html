@@ -600,7 +600,7 @@
   <!-- CHART VIEW -->
   <div class="view" id="view-chart">
     <div class="chart-panel">
-      <p class="chart-hint">Drag any point to set its exact urgency and importance (0–10). Moving it changes which quadrant it belongs to.</p>
+      <p class="chart-hint">Drag any point to set its exact urgency and importance (0–10). Moving it changes which quadrant it belongs to. P4 tasks and tasks with no due date aren't plotted here — they still live on the board.</p>
       <div class="chart-wrap">
         <svg id="chart-svg" viewBox="0 0 560 560"></svg>
       </div>
@@ -613,7 +613,7 @@
     </div>
   </div>
 
-  <footer>Data lives only in this browser tab · refresh resets to defaults</footer>
+  <footer>Data lives only in this browser tab · refresh resets to empty</footer>
 </div>
 
 <script>
@@ -644,27 +644,12 @@
     return { id: cryptoId(), text, urgency: jitter(d.urgency), importance: jitter(d.importance), source: 'local' };
   }
 
+  // Starts empty — no template/demo tasks. Populate via the add-task forms or a Todoist sync.
   let state = {
-    q1: [
-      seedTask("Fix production outage on checkout API", 'q1'),
-      seedTask("Reply to client escalation about missed deadline", 'q1'),
-      seedTask("Submit tax filing — due tomorrow", 'q1')
-    ],
-    q2: [
-      seedTask("Draft Q3 product roadmap", 'q2'),
-      seedTask("Learn the new design system", 'q2'),
-      seedTask("Schedule quarterly 1:1s with the team", 'q2'),
-      seedTask("Research competitor pricing models", 'q2')
-    ],
-    q3: [
-      seedTask("Book the office holiday party venue", 'q3'),
-      seedTask("Approve routine expense reports", 'q3'),
-      seedTask("Answer non-urgent Slack threads", 'q3')
-    ],
-    q4: [
-      seedTask("Reorganize old email folders", 'q4'),
-      seedTask("Browse industry newsletter archive", 'q4')
-    ]
+    q1: [],
+    q2: [],
+    q3: [],
+    q4: []
   };
 
   function findTask(id){
@@ -679,6 +664,10 @@
     renderBoard();
     renderChart();
     updateStats();
+  }
+
+  function priorityLabel(p){
+    return { 4: 'P1', 3: 'P2', 2: 'P3', 1: 'P4' }[p] || '';
   }
 
   function renderBoard(){
@@ -714,7 +703,17 @@
     textEl.textContent = task.text;
     const meta = document.createElement('span');
     meta.className = 'card-meta';
-    meta.textContent = `U ${task.urgency.toFixed(1)} · I ${task.importance.toFixed(1)}` + (task.source === 'todoist' ? ' · Todoist' : '');
+
+    if(task.source === 'todoist'){
+      const bits = [];
+      if(task.priority) bits.push(priorityLabel(task.priority));
+      bits.push(task.dueDate ? 'due ' + task.dueDate : 'no due date');
+      if(task.excludeFromChart) bits.push('not charted');
+      meta.textContent = bits.join(' · ');
+    } else {
+      meta.textContent = `U ${task.urgency.toFixed(1)} · I ${task.importance.toFixed(1)}`;
+    }
+
     textWrap.appendChild(textEl);
     textWrap.appendChild(meta);
 
@@ -747,7 +746,9 @@
     return card;
   }
 
-  // Manual move (drag on board, or select dropdown): reassign to quad's anchor point
+  // Manual move (drag on board, or select dropdown): reassign to quad's anchor point.
+  // A manual placement gives the task real coordinates again, so it re-enters the chart
+  // even if it started out excluded (e.g. a P4 or no-due-date Todoist import).
   function moveToQuad(id, to){
     const found = findTask(id);
     if(!found || found.quad === to) return;
@@ -756,6 +757,7 @@
     const d = QUAD_DEFAULTS[to];
     task.urgency = jitter(d.urgency);
     task.importance = jitter(d.importance);
+    task.excludeFromChart = false;
     state[to].push(task);
     render();
   }
@@ -767,6 +769,7 @@
     const { task } = found;
     task.urgency = urgency;
     task.importance = importance;
+    task.excludeFromChart = false;
     const targetQuad = quadFromValues(urgency, importance);
     const currentQuad = findTask(id).quad;
     if(targetQuad !== currentQuad){
@@ -808,27 +811,36 @@
   });
 
   // ===== Todoist sync =====
-  // Priority in Todoist's API: 4 = highest (shown as p1 in the app), 1 = normal (p4 in the app).
-  // We map that directly to an importance score.
-  const TODOIST_PRIORITY_TO_IMPORTANCE = { 4: 9.5, 3: 7, 2: 4.5, 1: 2 };
+  // Todoist priority in the API: 4 = highest (P1 in the app), 1 = normal/default (P4 in the app).
+  //
+  // Eisenhower mapping:
+  //  - Importance (Y axis): P1 = top (10), P2 = middle (5.5), P3 = bottom (1).
+  //    P4 (priority 1) tasks are excluded from the chart entirely — they still land
+  //    on the board (treated as "not important" for quadrant purposes) but aren't plotted.
+  //  - Urgency (X axis): overdue = top immediacy / rightmost (10). Due today sits one
+  //    immediacy rank below overdue (8.5). From there it scales down smoothly to
+  //    due-in-3-weeks, which is the lowest immediacy / leftmost point (1). Anything due
+  //    further out than 3 weeks is floored at that same leftmost value.
+  //    Tasks with no due date are excluded from the chart entirely — they still land on
+  //    the board (treated as "not urgent" for quadrant purposes) but aren't plotted.
+  const TODOIST_PRIORITY_TO_IMPORTANCE = { 4: 10, 3: 5.5, 2: 1 }; // P1 · P2 · P3 — P4 handled separately
 
   // Todoist filter query (their own filter syntax) — catches anything high-priority
   // or due very soon/overdue, so these are fetched (and surfaced) first.
   const TODOIST_PRIORITY_FILTER = 'p1 | p2 | overdue | (due before: +2 days)';
 
+  // Returns a 1–10 urgency score, or null if there's no usable due date.
   function urgencyFromDueDate(dueString){
-    if(!dueString) return 1.5; // no due date = not urgent
+    if(!dueString) return null;
     const due = new Date(dueString);
-    if(isNaN(due)) return 1.5;
+    if(isNaN(due)) return null;
     const now = new Date();
     const msPerDay = 86400000;
-    const daysUntil = (due.setHours(23,59,59,999) - now) / msPerDay;
-    if(daysUntil < 0) return 10;       // overdue
-    if(daysUntil < 1) return 9.5;      // due today
-    if(daysUntil < 2) return 8;        // due tomorrow
-    if(daysUntil < 4) return 6;        // due this week
-    if(daysUntil < 8) return 4;        // due next week
-    return 1.5;                        // due later / far out
+    due.setHours(23,59,59,999);
+    const daysUntil = (due - now) / msPerDay;
+    if(daysUntil < 0) return 10;                        // overdue → top immediacy / rightmost
+    const cappedDays = Math.min(daysUntil, 21);          // floor immediacy at the 3-week mark
+    return +(8.5 - (cappedDays / 21) * 7.5).toFixed(2);  // due today → 8.5 (one rank below overdue), 3wk+ → 1
   }
 
   async function fetchTodoistTasks(token, filter){
@@ -878,10 +890,27 @@
       });
 
       function addTask(t, prioritized){
-        const importance = TODOIST_PRIORITY_TO_IMPORTANCE[t.priority] ?? 2;
-        const urgency = urgencyFromDueDate(t.due ? t.due.date : null);
+        const dueDateStr = t.due ? t.due.date : null;
+        const isP4 = t.priority === 1;
+        const hasNoDueDate = !dueDateStr;
+
+        // Fallback values keep quadrant placement sensible even for excluded tasks:
+        // a P4 task is treated as "not important", a dateless task as "not urgent".
+        const importance = isP4 ? 1 : (TODOIST_PRIORITY_TO_IMPORTANCE[t.priority] ?? 1);
+        const rawUrgency = hasNoDueDate ? null : urgencyFromDueDate(dueDateStr);
+        const urgency = rawUrgency === null ? 1 : rawUrgency;
+
         const quad = quadFromValues(urgency, importance);
-        const entry = { id: 'td-' + t.id, text: t.content, urgency, importance, source: 'todoist' };
+        const entry = {
+          id: 'td-' + t.id,
+          text: t.content,
+          urgency,
+          importance,
+          source: 'todoist',
+          priority: t.priority,
+          dueDate: dueDateStr,
+          excludeFromChart: isP4 || hasNoDueDate
+        };
         // Priority tasks go to the front of their quadrant's list, rest go to the back.
         if(prioritized) state[quad].unshift(entry);
         else state[quad].push(entry);
@@ -1023,9 +1052,11 @@
     yTitle.setAttribute('transform', `translate(16, ${CHART_MARGIN + PLOT/2}) rotate(-90)`);
     svg.appendChild(yTitle);
 
-    // Task nodes
+    // Task nodes — P4 tasks and tasks with no due date are excluded from the chart.
     const allTasks = [];
-    Object.keys(state).forEach(q => state[q].forEach(t => allTasks.push({ ...t, quad: q })));
+    Object.keys(state).forEach(q => state[q].forEach(t => {
+      if(!t.excludeFromChart) allTasks.push({ ...t, quad: q });
+    }));
 
     allTasks.forEach(task => {
       const { x, y } = valueToPixel(task.urgency, task.importance);
